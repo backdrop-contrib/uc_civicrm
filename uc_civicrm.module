@@ -471,6 +471,10 @@ function _uc_civicrm_add_update_contact($cid, $order) {
     //
     // Assume that if there is a delivery name then that is the
     // contact to add.
+    //
+    // #2182533. Store's relationship is with the buyer, not the
+    // recipient. If Joe buys Sue a gift online, CRM relationship is
+    // with Joe, not Sue.
     $fname = '';
     $lname = '';
     if (!empty($order->delivery_last_name) && !empty($order->delivery_first_name)) {
