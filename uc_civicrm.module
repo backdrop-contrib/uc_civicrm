@@ -500,7 +500,10 @@ function _uc_civicrm_add_update_contact($cid, $order) {
     if ($contact_status == 'new' && !$contact_info['values'][$cid]['first_name'] && !$contact_info['values'][$cid]['last_name']) {
       try {
         $result = civicrm_api3('contact', 'create', $contact);
-        $link = l($result['id'], 'civicrm/contact/view', array('query' => 'reset=1&cid=' . $result['id']));
+        $cid = reset(array_keys($result['values']));
+        $name = trim($contact['display_name']);
+        $name = !empty($name) ? $contact['display_name'] : $cid;
+        $link = l($name, 'civicrm/contact/view', array('query' => array('reset' => 1, 'cid' => $cid)));
         uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Contact !link', array('!link' => $link)), 'admin');
       }
       catch (Exception $e) {
