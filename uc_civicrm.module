@@ -91,6 +91,7 @@ function uc_civicrm_contact_transaction($uid, $snippet = TRUE) {
  * Admin form configuration.
  */
 function uc_civicrm_admin() {
+  civicrm_initialize();
   $groups = civicrm_api3('group', 'get', array());
 
   $options = array();
