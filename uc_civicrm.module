@@ -622,6 +622,8 @@ function _uc_civicrm_add_update_contact($cid, $order) {
     return $cid;
   }
   catch (Exception $e) {
+    // #2186523: This could be improved so it's clear which of the
+    // above API calls threw which exception.
     drupal_set_message('CiviCRM error.', 'error');
     watchdog('uc_civicrm', 'CiviCRM error: %message', array('%message' => $e->getMessage()), WATCHDOG_ERROR);
   }
