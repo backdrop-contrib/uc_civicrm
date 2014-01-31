@@ -418,6 +418,22 @@ function _uc_civicrm_get_cid($order) {
 
 /**
  * Add or update contact information.
+ *
+ * @TODO I'm pretty sure this is not behaving reliably, and is worth
+ * rewriting ... it's pretty messy.
+ *
+ * - Think it doesn't handle a logged-in user placing an order on
+ *   behalf of another, user creation gets confused because of
+ *   $user->uid vs new contact details.
+ *
+ * - "Error getting contribution - but we dont know if this matters"
+ *
+ * - "CiviCRM error: Mandatory key(s) missing from params array:
+ *   location_type_id"
+ *
+ * - "civicrm_contribution_create(): Mandatory key(s) missing from
+ *   params array: contact_id"
+ *
  */
 function _uc_civicrm_add_update_contact($cid, $order) {
   if (!civicrm_initialize(TRUE)) {
