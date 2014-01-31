@@ -692,13 +692,12 @@ function _uc_civicrm_add_contribution($cid, &$order) {
   }
   _uc_civicrm_create_custom_contribution_fields();
 
-  $pay_data = uc_payment_load_payments($order->order_id);
-  $pay_data[0]->data = unserialize($pay_data[0]->data);
-  $txn_id = isset($pay_data[0]->data['txn_id']) ?
-    $pay_data[0]->data['txn_id'] : 'TRXN ID NOT AVAILABLE ' . md5($order->order_id);
+  $payments = uc_payment_load_payments($order->order_id);
+  $payment = end($payments);
+  $txn_id = t('Ubercart @oid:@rid', array('@oid' => $order->order_id, '@rid' => $payment->receipt_id));
 
-  // @FIXME Landmine. CiviCRM doesn't seem to accept financial values with
-  // precision greater than 2 digits after the decimal.
+  // @FIXME Landmine. CiviCRM doesn't seem to accept financial values
+  // with precision greater than 2 digits after the decimal.
   $rounded_total = round($order->order_total * 100) / 100;
 
   $sales_tax_field_id = 'custom_' . variable_get('uc_civicrm_sales_tax_field_id', '');
@@ -725,7 +724,7 @@ function _uc_civicrm_add_contribution($cid, &$order) {
     'fee_amount' => 00.00,
     'net_amount' => $rounded_total,
     'trxn_id' => $txn_id,
-    'invoice_id' => $order->order_id . '_uc',
+    'invoice_id' => t('Ubercart #@oid', array('@oid' => $order->order_id)),
     'source' => _uc_civicrm_create_detail_string($order),
     'receive_date' => 'now',
     'contribution_status_id' => _uc_civicrm_map_contribution_status($order->order_status),
