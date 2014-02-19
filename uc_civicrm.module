@@ -92,7 +92,7 @@ function uc_civicrm_contact_transaction($uid, $snippet = TRUE) {
  */
 function uc_civicrm_admin() {
   civicrm_initialize();
-  $groups = civicrm_api3('group', 'get', array());
+  $groups = civicrm_api3('group', 'get', array('option.limit' => 9999));
 
   $options = array();
   foreach ($groups['values'] as $group) {
