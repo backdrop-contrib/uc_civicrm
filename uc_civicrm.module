@@ -364,7 +364,7 @@ function _uc_civicrm_add_to_groups($cid) {
     if ($key != 0) {
       $params = array('contact_id' => $cid, 'group_id' => $key);
       try {
-        civicrm_api('group_contact', 'create', $params);
+        civicrm_api3('group_contact', 'create', $params);
       }
       catch (Exception $e) {
         watchdog('uc_civicrm', 'Error adding contact to group: ' . $result['error_message'], array(), WATCHDOG_ERROR);
@@ -402,7 +402,7 @@ function _uc_civicrm_get_cid($order) {
     'sequential' => 1,
   );
   try{
-    $contact = civicrm_api('contact', 'get', $params);
+    $contact = civicrm_api3('contact', 'get', $params);
   }
   catch (Exception $e) {
     watchdog('uc_civicrm', 'civicrm_contact_search(): ' . $e->getMessage(), array(), WATCHDOG_ERROR);
@@ -480,10 +480,9 @@ function _uc_civicrm_add_update_contact($cid, $order) {
 
     $contact_params = array(
       'id' => $cid,
-      'version' => 3,
     );
 
-    $contact_info = civicrm_api('contact', 'get', $contact_params);
+    $contact_info = civicrm_api3('contact', 'get', $contact_params);
     // Prepare array to update contact via civi API.
     //
     // Assume that if there is a delivery name then that is the
