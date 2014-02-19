@@ -506,7 +506,13 @@ function _uc_civicrm_add_update_contact($cid, $order) {
     $contact['first_name'] = $fname;
     $contact['sort_name'] = "{$lname}, {$fname}";
     $contact['display_name'] = "{$fname} {$lname}";
-    $contact['contact_type'] = 'Individual';
+    if (!$cid) {
+      $contact['contact_type'] = 'Individual';
+    }
+    // #2165331.
+    if (isset($contact['contact_subtype'])) {
+      unset($contact['contact_subtype']);
+    }
     $contact['email'] = $order->primary_email;
     if (empty($contact['source'])) {
       $contact['source'] = 'Ubercart purchase';
