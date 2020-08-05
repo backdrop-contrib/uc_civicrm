@@ -30,15 +30,15 @@ function uc_civicrm_update_last_removed() {
  */
 function uc_civicrm_update_1000() {
   $config = config('uc_civicrm.settings');
-  $config->set('uc_civicrm_contribution_type', update_variable_get('uc_civicrm_contribution_type', '1'));
+  $config->set('uc_civicrm_contribution_type', update_variable_get('uc_civicrm_contribution_type', 1));
   $config->set('uc_civicrm_groups', update_variable_get('uc_civicrm_groups', ''));
-  $config->set('uc_civicrm_contribution_group_id', update_variable_get('uc_civicrm_contribution_group_id', 'FALSE'));
+  $config->set('uc_civicrm_contribution_group_id', update_variable_get('uc_civicrm_contribution_group_id', false));
   $config->set('uc_civicrm_sales_tax_field_id', update_variable_get('uc_civicrm_sales_tax_field_id', ''));
   $config->set('uc_civicrm_shipping_cost_field_id', update_variable_get('uc_civicrm_shipping_cost_field_id', ''));
-  $config->set('uc_civicrm_locations_civicrm_billing', update_variable_get('uc_civicrm_locations_civicrm_billing', 'dynamic value in file /uc_civicrm/uc_civicrm.module line 1136'));
-  $config->set('uc_civicrm_locations_uc_billing', update_variable_get('uc_civicrm_locations_uc_billing', 'dynamic value in file /uc_civicrm/uc_civicrm.module line 1137'));
-  $config->set('uc_civicrm_locations_civicrm_delivery', update_variable_get('uc_civicrm_locations_civicrm_delivery', 'dynamic value in file /uc_civicrm/uc_civicrm.module line 1138'));
-  $config->set('uc_civicrm_locations_uc_delivery', update_variable_get('uc_civicrm_locations_uc_delivery', 'dynamic value in file /uc_civicrm/uc_civicrm.module line 1139'));
+  $config->set('uc_civicrm_locations_civicrm_billing', update_variable_get('uc_civicrm_locations_civicrm_billing', ''));
+  $config->set('uc_civicrm_locations_uc_billing', update_variable_get('uc_civicrm_locations_uc_billing', ''));
+  $config->set('uc_civicrm_locations_civicrm_delivery', update_variable_get('uc_civicrm_locations_civicrm_delivery', ''));
+  $config->set('uc_civicrm_locations_uc_delivery', update_variable_get('uc_civicrm_locations_uc_delivery', ''));
   update_variable_del('uc_civicrm_contribution_type');
   update_variable_del('uc_civicrm_groups');
   update_variable_del('uc_civicrm_contribution_group_id');
@@ -54,9 +54,5 @@ function uc_civicrm_update_1000() {
  * Implements hook_install().
  */
 function uc_civicrm_install() {
-  // Dynamically generated variable data was detected.
-  // /uc_civicrm/uc_civicrm.module line 1136
-  // /uc_civicrm/uc_civicrm.module line 1137
-  // /uc_civicrm/uc_civicrm.module line 1138
-  // /uc_civicrm/uc_civicrm.module line 1139
+
 }

@@ -16,7 +16,9 @@ with a link to the contact's order history in Ubercart.
 - Install this module using the official 
   [Backdrop CMS instructions](https://backdropcms.org/guide/modules)
 - Configure contribution and location types at
-  **admin/store/settings/uc_civicrm**
+  **admin/store/settings/uc_civicrm** (You may wish to create location types
+  `Ubercart_Billing` and `Ubercart_Shipping` in CiviCRM to
+  store shipping and billing address.)
 
 ## Issues
 
@@ -34,6 +36,7 @@ with a link to the contact's order history in Ubercart.
   [xurizaemon](https://github.com/xurizaemon), and [eileenmcnaughton](https://github.com/eileenmcnaughton). 
 - Original D7 version sponsored by [Consult and Design International](http://www.consultanddesign.com/),
   with updates by [Fuzion](http://fuzion.co.nz/) & [BackOffice Thinking](http://www.backofficethinking.com/).
+- Patched for CiviCRM 5 by [artfulrobot](https://github.com/artfulrobot).
 
 ## License
 

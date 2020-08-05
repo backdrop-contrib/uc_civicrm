@@ -1,12 +1,13 @@
 {
     "_config_name": "uc_civicrm.settings",
-    "uc_civicrm_contribution_type": "1",
+    "uc_civicrm_contribution_type": 1,
     "uc_civicrm_groups": "",
-    "uc_civicrm_contribution_group_id": "FALSE",
+    "uc_civicrm_contribution_group_id": false,
     "uc_civicrm_sales_tax_field_id": "",
     "uc_civicrm_shipping_cost_field_id": "",
-    "uc_civicrm_locations_civicrm_billing": "dynamic value in file /uc_civicrm/uc_civicrm.module line 1136",
-    "uc_civicrm_locations_uc_billing": "dynamic value in file /uc_civicrm/uc_civicrm.module line 1137",
-    "uc_civicrm_locations_civicrm_delivery": "dynamic value in file /uc_civicrm/uc_civicrm.module line 1138",
-    "uc_civicrm_locations_uc_delivery": "dynamic value in file /uc_civicrm/uc_civicrm.module line 1139"
+    "uc_civicrm_locations_civicrm_billing": "",
+    "uc_civicrm_locations_uc_billing": "",
+    "uc_civicrm_locations_civicrm_delivery": "",
+    "uc_civicrm_locations_uc_delivery": "",
+    "uc_civicrm_shipping_cost_field_id": ""
 }

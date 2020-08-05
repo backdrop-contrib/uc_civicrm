@@ -1,4 +1,6 @@
 <?php
+// Set this to true to fill up your logs :-)
+const UC_CIVICRM_DEBUG = FALSE;
 
 /**
  * @file
@@ -27,15 +29,13 @@ function uc_civicrm_civicrm_tabset($tabsetName, &$tabs, $context) {
         'weight' => 99,
         'class' => 'livePage',
         'icon' => 'crm-i fas fa-shopping-cart',
-        'url' => url('admin/store/civicrm/customer/orders/' . $uid),
+        'url' => url("admin/store/civicrm/customer/orders/$uid"),
       );
 
       $tabs[] = $tab;
-      return $tabs;
     }
     
-    // No tab if no purchases
-    return;
+    return $tabs;
   }
 }
 
@@ -85,7 +85,7 @@ function uc_civicrm_contact_transaction($uid, $snippet = TRUE) {
   // TODO: Can this be replaced by the default 'uc_orders' view?
   // $output = views_embed_view('uc_orders', 'by_customer', $uid);
   if ($snippet) {
-    print json_encode(array('content' => render($output)));
+    CRM_Core_Page_AJAX::returnJsonResponse(render($output));
   }
   else {
     return $output;
@@ -285,23 +285,31 @@ function uc_civicrm_action_update_contact($order) {
   if (!civicrm_initialize(TRUE)) {
     return;
   }
-  $cid = _uc_civicrm_get_cid($order);
-  if ($cid === FALSE) {
-    uc_order_comment_save($order->order_id, 0, t('Failed to Create CiviCRM Contact.'), 'admin');
-    watchdog('uc_civicrm', '_uc_civicrm_get_cid() returned %cid', array('%cid' => $cid), WATCHDOG_ERROR);
+  try {
+    $cid = _uc_civicrm_get_cid($order);
+    _uc_civicrm_update_contact($cid, $order);
+    _uc_civicrm_update_locations($cid, $order);
+    _uc_civicrm_add_to_groups($cid);
+  }
+  catch (Exception $e) {
+    // Silently fail.
+    Civi::log()->error("Error recording Ubercart order in uc_civicrm_action_update_contact CiviCRM.\n%message\n%trace",
+      ['%message' $e->getMessage() '%trace' $e->getTraceAsString()]);
     return;
   }
-
-  $cid = _uc_civicrm_add_update_contact($cid, $order);
-  if ($cid === FALSE) {
-    watchdog('uc_civicrm', '_uc_civicrm_add_update_contact() returned %cid', array('%cid' => $cid), WATCHDOG_ERROR);
-    return;
-  }
-  _uc_civicrm_add_to_groups($cid);
 }
 
 /**
  * Action called when order updated.
+ *
+ * Note from @artfulrobot:
+ * > I think that originally an order would first trigger the "Add to CiviCRM
+ * > on new order" action at checkout, and then may later call this with an
+ * > update to the order status.
+ * >
+ * > However, I observe that this is now being called before that other action
+ * > has, meaning it's first called with is_new = FALSE, and then called again
+ * > with is_new = TRUE.
  *
  * @param object $order
  *   the order
@@ -315,56 +323,79 @@ function uc_civicrm_action_order_civicrm($order, $is_new = TRUE) {
   if (!civicrm_initialize()) {
     return;
   }
-  if ($is_new) {
+  if (UC_CIVICRM_DEBUG) {
+    Civi::log()->info(__FUNCTION__ . " called", ["is_new" $is_new ? "YES" : "NO" $order]);
+  }
 
-    // Find or create a CiviCRM contact ID for the customer.
+  // Find the contact, or create one.
+  try {
     $cid = _uc_civicrm_get_cid($order);
-    if ($cid === FALSE) {
-      return;
-    }
+    _uc_civicrm_update_contact($cid, $order);
+    _uc_civicrm_update_locations($cid, $order);
+  }
+  catch (Exception $e) {
+    // Silently fail.
+    Civi::log()->error("Error recording Ubercart order in CiviCRM in uc_civicrm_action_order_civicrm.\n%message\n%trace",
+      ['%message' $e->getMessage() '%trace' $e->getTraceAsString()]);
+    return;
+  }
 
-    $cid = _uc_civicrm_add_update_contact($cid, $order);
+  if (UC_CIVICRM_DEBUG) {
+    Civi::log()->info(__FUNCTION__ . " looking for contribution", []);
+  }
+  $contribution = _uc_civicrm_find_contribution_for_order($cid, $order);
+  if (!$contribution) {
+    // Something's really wrong.
+    watchdog('uc_civicrm', 'Error getting newly created contribution for order ' . $order->id, [], WATCHDOG_ERROR);
+    return;
+  }
 
-    if ($cid === FALSE) {
-      return;
-    }
+  try {
+    $params =[
+      'contact_id'             $cid
+      'contribution_status_id' _uc_civicrm_map_contribution_status($order->order_status)
+      'id'                     $contribution['id']
+    ];
+    $result = civicrm_api3('contribution', 'create', $params);
+  }
+  catch (Exception $e) {
+    watchdog('uc_civicrm', 'Error updating contribution: ' . $e->getMessage()  . print_r($params, TRUE), array(), WATCHDOG_ERROR);
+  }
 
-    // Add the contribution record.
-    _uc_civicrm_add_contribution($cid, $order);
-
+  // Finally, if this is called with $is_new, add the contact to the selected group.
+  if ($is_new) {
     // Add this contact to selected groups.
     _uc_civicrm_add_to_groups($cid);
   }
-  else {
-    $cid = _uc_civicrm_get_cid($order);
-    $params = array(
-      'invoice_id' => $order->order_id . "_uc",
-      'return' => 'contact_id',
-    );
-    try {
-      $contribution = civicrm_api3('contribution', 'getsingle', $params);
-      $cid = $contribution['contact_id'];
-    }
-    catch (Exception $e) {
-      // @TODO figure out why should this exist?
-      _uc_civicrm_add_contribution($cid, $order);
-      watchdog('uc_civicrm', 'Error getting contribution - but we dont know if this matters: ' . $e->getMessage() . print_r($params, TRUE), array(), WATCHDOG_ERROR);
-      return;
-    }
-    try {
-      $params = array(
-        'contact_id' => $cid,
-        'contribution_status_id' => _uc_civicrm_map_contribution_status($order->order_status),
-        'id' => $contribution['id'],
-      );
-      $result = civicrm_api3('contribution', 'create', $params);
-    }
-    catch (Exception $e) {
-      watchdog('uc_civicrm', 'Error creating contribution: ' . $e->getMessage()  . print_r($params, TRUE), array(), WATCHDOG_ERROR);
-    }
-  }
 }
 
+/**
+ * Looks up the singluar CiviCRM Contribution record that matches this Ubercart Order.
+ * Creates one if one not found.
+ *
+ * @param Object $order
+ * @param String $return what you want the API to return.
+ *
+ * @return FALSE|Array
+ */
+function _uc_civicrm_find_contribution_for_order($cid, $order, $return = 'contact_id') {
+
+  $params =[
+    'invoice_id' t('Ubercart #@oid', array('@oid' => $order->order_id))
+    'return'     $return
+    'sequential' 1
+  ];
+  $contribution = civicrm_api3('contribution', 'get', $params);
+  if ($contribution['count'] == 1) {
+    // Found it.
+    return $contribution['values'][0];
+  }
+
+  // Create it now.
+  $contribution = _uc_civicrm_add_contribution($cid, $order);
+
+  return $contribution;
+}
 /**
  * Add contact to any specified groups.
  *
@@ -395,47 +426,62 @@ function _uc_civicrm_add_to_groups($cid) {
 }
 
 /**
- * Get contact id for the order's customer.
+ * Get contact id for the order's customer. This may involve creating a stub contact.
  *
- * @param object $order
- *   Order
+ * - If a user is logged in, use synchronizeUFMatch to find/create the CiviCRM
+ *   contact.
  *
- * @return false|integer
- *   > 0: existing contact
- *   = 0: create new contact
- *   FALSE: error
+ * - Otherwise we find the first contact with the same email. (!)
+ *
+ * - If the email does not exist we create a CiviCRM Individual contact with
+ *   just the email.
+ *
+ * @param object $order Ubercart Order
+ * @return integer contact ID
  */
 function _uc_civicrm_get_cid($order) {
+
+  // First, if order has a user ID, get a CiviCRM Contact from that.  Using
+  // synchronizeUFMatch will find an existing contact match, creating the
+  // Contact and Match as necessary. If a contact is created, it only has an
+  // email address.
   global $user;
   if ($order->uid != 0) {
     $match = CRM_Core_BAO_UFMatch::synchronizeUFMatch($user, $order->uid, $order->primary_email, 'Backdrop', FALSE, 'Individual');
-    if (!is_object($match)) {
-      return FALSE;
+    if (is_object($match)) {
+      return $match->contact_id;
     }
-    return $match->contact_id;
+
+    // We are logged in, getting a contact record for this Backdrop user failed.
+    // This is an unusal state of affairs, and not something we can deal with now.
+    watchdog('uc_civicrm', '_uc_civicrm_get_cid() processing order #%orderid error, synchronizeUFMatch failed to return a contact.',
+      ['%orderid' $order->order_id], WATCHDOG_ERROR);
+    throw new Exception("There was an error with your user account.");
   }
 
   // The customer is anonymous.  Look in the CiviCRM contacts table for a
   // contact that matches the primary email.
-  $params = array(
-    'email' => $order->primary_email,
-    'return.contact_id' => TRUE,
-    'sequential' => 1,
-  );
-  try {
-    $contact = civicrm_api3('contact', 'get', $params);
-  }
-  catch (Exception $e) {
-    watchdog('uc_civicrm', 'civicrm_contact_search(): ' . $e->getMessage(), array(), WATCHDOG_ERROR);
-    return FALSE;
+  $params =[
+    'email'      $order->primary_email
+    'return'     'contact_id'
+    'sequential' 1
+  ];
+  $contact = civicrm_api3('contact', 'get', $params);
+
+  if ($contact['count'] > 0) {
+    // We found one, pick the first one and use that (!)
+    return $contact['values'][0]['id'];
   }
 
-  // No matches found, so we will need to create a contact.
-  if (count($contact) == 0) {
-    return 0;
-  }
-  $cid = $contact['values'][0]['id'];
-  return $cid;
+  // No matches found, so we will need to create a contact with just the email now.
+  $params =[
+    'contact_type' 'Individual'
+    'email'        $order->primary_email
+    'return'       'contact_id'
+  ];
+  $contact = civicrm_api3('contact', 'create', $params);
+
+  return $contact['id'];
 }
 
 /**
@@ -448,210 +494,151 @@ function _uc_civicrm_get_cid($order) {
  *   behalf of another, user creation gets confused because of
  *   $user->uid vs new contact details.
  *
- * - "Error getting contribution - but we dont know if this matters"
- *
- * - "CiviCRM error: Mandatory key(s) missing from params array:
- *   location_type_id"
- *
- * - "civicrm_contribution_create(): Mandatory key(s) missing from
- *   params array: contact_id"
- *
+ * @param int $cid ContactID. Required.
  */
-function _uc_civicrm_add_update_contact($cid, $order) {
+function _uc_civicrm_update_contact($cid, $order) {
   if (!civicrm_initialize(TRUE)) {
-    return;
+    throw new Exception("Cannot update CiviCRM contact; civicrm_initialize failed.");
   }
+
+  // Load contact details.
   try {
-    $contact = array();
-    if ($cid != 0) {
-      try {
-        $params = array(
-          'contact_id' => $cid,
-          'return' => array('id', 'source', 'first_name', 'last_name'),
-        );
-        $contact = civicrm_api3('contact', 'getsingle', $params);
-      }
-      catch (CiviCRM_Exception $e) {
-        watchdog('uc_civicrm', 'civicrm_contact_get():' . $e->getMessage(), array(), WATCHDOG_ERROR);
-        return FALSE;
-      }
-    }
+    $contact = civicrm_api3('contact', 'getsingle', [
+      'contact_id' (int) $cid
+      'return'[
+        'first_name' 'last_name'
+        'created_date'
+        'source'
+      ]
+    ]);
+  }
+  catch (CiviCRM_Exception $e) {
+    // This should not happen since we only just looked up or created the contact.
+    watchdog('uc_civicrm', 'Failed to load contact %cid: %error',
+      ['%cid' $cid '%error' $e->getMessage()], WATCHDOG_ERROR);
+    return FALSE;
+  }
 
-    // Determine if the contact is new - added by bot.
-    $log = new CRM_Core_DAO_Log();
-    $log->entity_table = 'civicrm_contact';
-    $log->entity_id = $cid;
-    $log->orderBy('modified_date asc');
-    $log->limit(1);
-    $result = CRM_Core_DAO::$_nullObject;
-    if ($log->find(TRUE)) {
-      $result = array(
-        'id' => $log->modified_id,
-        'date' => $log->modified_date,
-      );
-    }
-    $date = date('Y-m-d H:i:s');
-    $to_time = strtotime($date);
-    $from_time = strtotime($result['date']);
-    $diff = round(abs($to_time - $from_time) / 60, 2) . " minute";
-    $contact_status = 'old';
-    if ($diff < 30) {
-      $contact_status = 'new';
-    }
 
-    $contact_params = array(
-      'id' => $cid,
-    );
+  // Prepare array to update contact via civi API.
+  //
+  // Assume that if there is a delivery name then that is the
+  // contact to add.
+  //
+  // #2182533. Store's relationship is with the buyer, not the
+  // recipient. If Joe buys Sue a gift online, CRM relationship is
+  // with Joe, not Sue.
+  $update_params =[
+    'id' $cid
+  ];
 
-    $contact_info = civicrm_api3('contact', 'get', $contact_params);
-    // Prepare array to update contact via civi API.
-    //
-    // Assume that if there is a delivery name then that is the
-    // contact to add.
-    //
-    // #2182533. Store's relationship is with the buyer, not the
-    // recipient. If Joe buys Sue a gift online, CRM relationship is
-    // with Joe, not Sue.
-    $fname = '';
-    $lname = '';
+  // Set the contact's names if they are not already set.
+  if (empty($contact['first_name']) && empty($contact['last_name'])) {
+
     if (!empty($order->delivery_last_name) && !empty($order->delivery_first_name)) {
-      $fname = $order->delivery_first_name;
-      $lname = $order->delivery_last_name;
+      $update_params['first_name'] = $order->delivery_first_name;
+      $update_params['last_name']  = $order->delivery_last_name;
     }
     else {
-      $fname = $order->billing_first_name;
-      $lname = $order->billing_last_name;
+      $update_params['first_name'] = $order->billing_first_name;
+      $update_params['last_name']  = $order->billing_last_name;
     }
-
-    $contact['last_name'] = $lname;
-    $contact['first_name'] = $fname;
-    $contact['sort_name'] = "{$lname}, {$fname}";
-    $contact['display_name'] = "{$fname} {$lname}";
-    if (!$cid) {
-      $contact['contact_type'] = 'Individual';
-    }
-    // #2165331.
-    if (isset($contact['contact_subtype'])) {
-      unset($contact['contact_subtype']);
-    }
-    $contact['email'] = $order->primary_email;
-    if (empty($contact['source'])) {
-      $contact['source'] = 'Ubercart purchase';
-    }
-
-    // Create contact or update existing contact.
-    if ($contact_status == 'new' && !$contact_info['values'][$cid]['first_name'] && !$contact_info['values'][$cid]['last_name']) {
-      try {
-        $result = civicrm_api3('contact', 'create', $contact);
-        $cid = reset(array_keys($result['values']));
-        $name = trim($contact['display_name']);
-        $name = !empty($name) ? $contact['display_name'] : $cid;
-        $link = l($name, 'civicrm/contact/view', array('query' => array('reset' => 1, 'cid' => $cid)));
-        uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Contact !link', array('!link' => $link)), 'admin');
-      }
-      catch (Exception $e) {
-        watchdog('uc_civicrm', 'civicrm_contact_add():' . $e->getMessage(), array(), WATCHDOG_ERROR);
-        return FALSE;
-      }
-    }
-
-    // Location.
-    $loc_types = _uc_civicrm_get_locations();
-    $uc_billing = $loc_types['uc-billing'];
-    $uc_delivery = $loc_types['uc-delivery'];
-    try {
-      $existing_addresses = civicrm_api3('address', 'get', array('contact_id' => $cid));
-      $existing_addresses = $existing_addresses['values'];
-      $existing_phones = civicrm_api3('phone', 'get', array('contact_id' => $cid));
-      $existing_phones = $existing_phones['values'];
-      $delivery_address = $billing_address = array('contact_id' => $cid);
-      $address_types = array('billing', 'delivery');
-
-      foreach ($address_types as $address_type) {
-        $phone_exists = FALSE;
-        if (!empty($order->{$address_type . '_phone'})) {
-          $phone = array(
-            'phone_type_id' => 1,
-            'location_type_id' => ${'uc_' . $address_type},
-            'phone' => $order->{$address_type . '_phone'},
-            'contact_id' => $cid,
-          );
-          foreach ($existing_phones as $existing_phone) {
-            if ($existing_phone['location_type_id'] ==${'uc_' . $address_type}) {
-              $phone['id'] = $existing_phone['id'];
-            }
-            if ($existing_phone['phone'] == $phone['phone']) {
-              $phone_exists = TRUE;
-            }
-          }
-          if (!$phone_exists) {
-            civicrm_api3('phone', 'create', $phone);
-            $targs = array(
-              '%type' => ${'uc_' . $address_type},
-              '%phone' => $phone['phone'],
-            );
-            uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Phone of type %type: %phone', $targs), 'admin');
-          }
-        }
-        $address_exists = FALSE;
-        if (!empty($order->{$address_type . '_last_name'}) && !empty($order->{$address_type . '_first_name'})) {
-          $countries = uc_get_country_data(array('country_id' => $order->{$address_type . '_country'}));
-          $address = array(
-            'location_type_id' => ${'uc_' . $address_type},
-            'city' => $order->{$address_type . '_city'},
-            'postal_code' => $order->{$address_type . '_postal_code'},
-            'name' => $order->{$address_type . '_company'},
-            'street_address' => $order->{$address_type . '_street1'},
-            'supplemental_address_1' => $order->{$address_type . '_street2'},
-            'country' => $countries[0]['country_iso_code_2'],
-            'contact_id' => $cid,
-          );
-          if (isset($order->{$address_type . 'delivery_zone'})) {
-            $address['state_provide'] = uc_get_zone_code($order->{$address_type . 'delivery_zone'});
-          }
-          foreach ($existing_addresses as $existing) {
-            if ($existing['location_type_id'] ==${'uc_' . $address_type}) {
-              $address['id'] = $existing['id'];
-            }
-            // @TODO Don't create if exact match of another - should
-            // we make 'exact match' configurable.
-            elseif (
-              $existing['street_address'] == $address['street_address']
-                && CRM_Utils_Array::value('supplemental_address_1', $existing) == CRM_Utils_Array::value('supplemental_address_1', $address)
-                && $existing['city'] == $address['city']
-                && $existing['postal_code'] == $address['postal_code']
-            ) {
-              $address_exists = TRUE;
-            }
-          }
-          if (!$address_exists) {
-            civicrm_api3('address', 'create', $address);
-            $targs = array(
-              '%address_type' => ${'uc_' . $address_type},
-              '%address' => $address['street_address'],
-            );
-            uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Address of type %address_type: %address', $targs), 'admin');
-          }
-        }
-      }
-    }
-    catch (CiviCRM_Exception $e) {
-      $msg = 'uc_civicrm_add_update_contact:';
-      if (!empty($address)) {
-        $msg .= " while updating $address_type address " . print_r($address, TRUE);
-      }
-      elseif (!empty($phone)) {
-        $msg .= " while updating $address_type phone " . print_r($phone, TRUE);
-      }
-      watchdog('uc_civicrm', $msg . $e->getMessage(), array(), WATCHDOG_ERROR);
-    }
-    return $cid;
   }
-  catch (Exception $e) {
-    // #2186523: This could be improved so it's clear which of the
-    // above API calls threw which exception.
-    backdrop_set_message('CiviCRM error.', 'error');
-    watchdog('uc_civicrm', 'CiviCRM error: %message', array('%message' => $e->getMessage()), WATCHDOG_ERROR);
+
+  // Set the source if we don't have one.
+  if (empty($contact['source'])) {
+    $update_params['source'] = 'Ubercart purchase';
+  }
+
+  $result = civicrm_api3('contact', 'create', $update_params);
+  $name = empty($result['display_name']) ? $cid : trim($result['display_name']);
+  $link = l($name, 'civicrm/contact/view', array('query' => array('reset' => 1, 'cid' => $cid)));
+  uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Contact !link', array('!link' => $link)), 'admin');
+}
+
+/**
+ * Update the address, phones.
+ */
+function _uc_civicrm_update_locations($cid, $order) {
+
+  // Location.
+  $loc_types   = _uc_civicrm_get_locations();
+  $uc_billing  = $loc_types['uc-billing'];
+  $uc_delivery = $loc_types['uc-delivery'];
+
+  $existing_addresses = civicrm_api3('address', 'get', array('contact_id' => $cid));
+  $existing_addresses = $existing_addresses['values'];
+  $existing_phones = civicrm_api3('phone', 'get', array('contact_id' => $cid));
+  $existing_phones = $existing_phones['values'];
+  $delivery_address = $billing_address = array('contact_id' => $cid);
+  $address_types = array('billing', 'delivery');
+
+  foreach ($address_types as $address_type) {
+    $phone_exists = FALSE;
+    if (!empty($order->{$address_type . '_phone'})) {
+      $phone = array(
+        'phone_type_id' => 1,
+        'location_type_id' => ${'uc_' . $address_type},
+        'phone' => $order->{$address_type . '_phone'},
+        'contact_id' => $cid,
+      );
+      foreach ($existing_phones as $existing_phone) {
+        if ($existing_phone['location_type_id'] ===${'uc_' . $address_type}) {
+          $phone['id'] = $existing_phone['id'];
+        }
+        if ($existing_phone['phone'] === $phone['phone']) {
+          $phone_exists = TRUE;
+        }
+      }
+      if (!$phone_exists) {
+        civicrm_api3('phone', 'create', $phone);
+        $targs = array(
+          '%type' => ${'uc_' . $address_type},
+          '%phone' => $phone['phone'],
+        );
+        uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Phone of type %type: %phone', $targs), 'admin');
+      }
+    }
+    $address_exists = FALSE;
+    if (!empty($order->{$address_type . '_last_name'}) && !empty($order->{$address_type . '_first_name'})) {
+      $countries = uc_get_country_data(array('country_id' => $order->{$address_type . '_country'}));
+      $address = array(
+        'location_type_id' => ${'uc_' . $address_type},
+        'city' => $order->{$address_type . '_city'},
+        'postal_code' => $order->{$address_type . '_postal_code'},
+        'name' => $order->{$address_type . '_company'},
+        'street_address' => $order->{$address_type . '_street1'},
+        'supplemental_address_1' => $order->{$address_type . '_street2'},
+        'country' => $countries[0]['country_iso_code_2'],
+        'contact_id' => $cid,
+      );
+      if (isset($order->{$address_type . 'delivery_zone'})) {
+        $address['state_provide'] = uc_get_zone_code($order->{$address_type . 'delivery_zone'});
+      }
+      foreach ($existing_addresses as $existing) {
+        if ($existing['location_type_id'] ==${'uc_' . $address_type}) {
+          $address['id'] = $existing['id'];
+        }
+        // @TODO Don't create if exact match of another - should
+        // we make 'exact match' configurable.
+        elseif (
+          $existing['street_address'] == $address['street_address']
+            && CRM_Utils_Array::value('supplemental_address_1', $existing) == CRM_Utils_Array::value('supplemental_address_1', $address)
+            && $existing['city'] == $address['city']
+            && $existing['postal_code'] == $address['postal_code']
+        ) {
+          $address_exists = TRUE;
+        }
+      }
+      if (!$address_exists) {
+        civicrm_api3('address', 'create', $address);
+        $targs = array(
+          '%address_type' => ${'uc_' . $address_type},
+          '%address' => $address['street_address'],
+        );
+        uc_order_comment_save($order->order_id, 0, t('Created new CiviCRM Address of type %address_type: %address', $targs), 'admin');
+      }
+    }
   }
 }
 
@@ -723,8 +710,11 @@ function _uc_civicrm_add_contribution($cid, &$order) {
   _uc_civicrm_create_custom_contribution_fields();
 
   $payments = uc_payment_load_payments($order->order_id);
-  $payment = end($payments);
-  $txn_id = t('Ubercart @oid:@rid', array('@oid' => $order->order_id, '@rid' => $payment->receipt_id));
+  $txn_id = t('Ubercart @oid', array('@oid' => $order->order_id));
+  if ($payments) {
+    $payment = end($payments);
+    $txn_id = t('Ubercart @oid:@rid', array('@oid' => $order->order_id, '@rid' => $payment->receipt_id));
+  }
 
   // @FIXME Landmine. CiviCRM doesn't seem to accept financial values
   // with precision greater than 2 digits after the decimal.
@@ -745,6 +735,7 @@ function _uc_civicrm_add_contribution($cid, &$order) {
   }
 
   $params = array(
+    'sequential' => 1,
     'contact_id' => $cid,
     'total_amount' => $rounded_total,
     // @FIXME this needs a sensible default
@@ -764,6 +755,9 @@ function _uc_civicrm_add_contribution($cid, &$order) {
   );
   try {
     $contribution = civicrm_api3('Contribution', 'create', $params);
+    if (UC_CIVICRM_DEBUG) {
+      Civi::log()->info(__FUNCTION__ . " created contribution", [$contribution]);
+    }
   }
   catch (Exception $e) {
     // Log the error, but continue.
@@ -771,7 +765,7 @@ function _uc_civicrm_add_contribution($cid, &$order) {
     return FALSE;
   }
 
-  return TRUE;
+  return $contribution['values'][0];
 }
 
 /**
@@ -903,16 +897,11 @@ function uc_civicrm_create_activity_form($form_state, $settings = array()) {
 function uc_civicrm_syncronize_status($order) {
   civicrm_initialize();
 
-  $search_params = array(
-    'invoice_id' => $order->order_id . "_uc",
-    'return.contact_id' => 1,
-  );
-  $result = civicrm_api3('contributon', 'get', $search_params);
-
-  // @TODO Doesn't civicrm_api3 throw exceptions instead of returning
-  // CiviCRM errors?
-  if (civicrm_error($result)) {
-    watchdog('uc_civicrm', 'uc_civicrm_syncronize_status() returned: %message', array('%message' => $result['error_message']), WATCHDOG_ERROR);
+  $contribution = _uc_civicrm_find_contribution_for_order($order);
+  if (!$contribution) {
+    // Something's really wrong.
+    watchdog('uc_civicrm', 'Error getting newly created contribution for order ' . $order->id, [], WATCHDOG_ERROR);
+    return;
   }
   else {
     $contribution = array_shift($result);
@@ -1002,7 +991,6 @@ function _uc_civicrm_customer_orders($uid) {
         array('data' => format_date($order->created, 'uc_store')),
         array('data' => check_plain($bname)),
         array('data' => check_plain($sname)),
-        //array('data' => $item_count['COUNT(*)']),
         array('data' => $item_count),
         array('data' => array(
             '#theme' => 'uc_price',
@@ -1169,12 +1157,32 @@ function _uc_civicrm_get_locations() {
   $location_types = civicrm_api3('phone', 'getoptions', array('field' => 'location_type_id'));
   $location_types = $location_types['values'];
 
-  $locations = array(
-    'civicrm-billing' => $config->get('uc_civicrm_locations_civicrm_billing'),
-    'uc-billing' => $config->get('uc_civicrm_locations_uc_billing'),
-    'civicrm-delivery' => $config->get('uc_civicrm_locations_civicrm_delivery'),
-    'uc-delivery' => $config->get('uc_civicrm_locations_uc_delivery'),
-  );
+  /**
+   * Try a variable and if that fails, scan an array of preferences, return first matching one, or FALSE.
+   */
+  $get_by_preference = function($var_name, $prefs) use ($location_types) {
+    $_ = $config->get($var_name);
+    if ($_) {
+      // Found from variable.
+      return $_;
+    }
+    // Need to check our preferences.
+    foreach ($prefs as $pref) {
+      $_ = array_search($pref, $location_types);
+      if ($_) {
+        return $_;
+      }
+    }
+    Civi::log()->error("Failed to find any location type from '$var_name' or any of :", $prefs);
+    return FALSE;
+  };
+
+  $locations = [
+    'civicrm-billing'  => $get_by_preference('uc_civicrm_locations_civicrm_billing', ['Billing', 'Main']),
+    'uc-billing'       => $get_by_preference('uc_civicrm_locations_uc_billing', ['Ubercart_Billing', 'Billing', 'Main']),
+    'civicrm-delivery' => $get_by_preference('uc_civicrm_locations_civicrm_delivery', ['Postal', 'Main']),
+    'uc-delivery'      => $get_by_preference('uc_civicrm_locations_uc_delivery', ['Ubercart_Shipping', 'Postal', 'Main']),
+  ];
   return $locations;
 }
 
