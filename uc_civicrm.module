@@ -6,33 +6,37 @@
  */
 
 /**
- * Implements hook_civicrm_tabs().
+ * Implements hook_civicrm_tabset().
  */
-function uc_civicrm_civicrm_tabs(&$tabs, $cid) {
-  $uid = CRM_Core_BAO_UFMatch::getUFId($cid);
-  if (empty($uid)) {
+function uc_civicrm_civicrm_tabset($tabsetName, &$tabs, $context) {
+  $cid = CRM_Utils_Array::value('contact_id', $context);
+  if ($tabsetName == 'civicrm/contact/view' && $cid) {
+    $uid = CRM_Core_BAO_UFMatch::getUFId($cid);
+    if (empty($uid)) {
+      return;
+    }
+  
+    $history = uc_civicrm_contact_transaction($uid, FALSE);
+    $count = count($history['orders']['#rows']);
+  
+    if ($count > 0) {
+      $tab = array(
+        'id' => 'purchases',
+        'title' => t('Purchases'),
+        'count' => $count,
+        'weight' => 99,
+        'class' => 'livePage',
+        'icon' => 'crm-i fas fa-shopping-cart',
+        'url' => url('admin/store/civicrm/customer/orders/' . $uid),
+      );
+
+      $tabs[] = $tab;
+      return $tabs;
+    }
+    
+    // No tab if no purchases
     return;
   }
-
-  $history = uc_civicrm_contact_transaction($uid, FALSE);
-  $count = count($history['orders']['#rows']);
-
-  if ($count > 0) {
-    $tab = array(
-      'id' => 'purchases',
-      'title' => t('Purchases'),
-      'count' => $count,
-      'weight' => 99,
-    );
-
-    $tab['url'] = url("admin/store/civicrm/customer/orders/$uid");
-    $tabs[] = $tab;
-  
-    return $tabs;
-  }
-  
-  // No tab if no purchases
-  return;
 }
 
 /**
@@ -44,7 +48,9 @@ function uc_civicrm_menu() {
     'title' => 'CiviCRM',
     'page callback' => 'uc_civicrm_contact_transaction',
     'page arguments' => array(5),
-    'access arguments' => array('administer CiviCRM'),
+    'access arguments' => array(
+      'administer CiviCRM',
+    ),
     'type' => MENU_CALLBACK,
   );
 
@@ -52,8 +58,12 @@ function uc_civicrm_menu() {
     'title' => 'Ubercart/CiviCRM',
     'description' => 'Configuration options for Ubercart/CiviCRM integration.',
     'page callback' => 'backdrop_get_form',
-    'page arguments' => array('uc_civicrm_admin'),
-    'access arguments' => array('access administration pages'),
+    'page arguments' => array(
+      'uc_civicrm_admin',
+    ),
+    'access arguments' => array(
+      'access administration pages',
+    ),
     'type' => MENU_NORMAL_ITEM,
   );
 
@@ -72,8 +82,10 @@ function uc_civicrm_contact_transaction($uid, $snippet = TRUE) {
   }
 
   $output = _uc_civicrm_customer_orders($uid);
+  // TODO: Can this be replaced by the default 'uc_orders' view?
+  // $output = views_embed_view('uc_orders', 'by_customer', $uid);
   if ($snippet) {
-    print render($output);
+    print json_encode(array('content' => render($output)));
   }
   else {
     return $output;
@@ -85,9 +97,10 @@ function uc_civicrm_contact_transaction($uid, $snippet = TRUE) {
  */
 function uc_civicrm_config_info() {
   $prefixes['uc_civicrm.settings'] = array(
-    'label' => t('Module name settings'),
+    'label' => t('Ubercart CiviCRM settings'),
     'group' => t('Configuration'),
   );
+  return $prefixes;
 }
 
 /**
@@ -1008,7 +1021,7 @@ function _uc_civicrm_customer_orders($uid) {
     '!total' => uc_currency_format($totals['total']),
   );
   $build['description'] = array(
-    '#markup' => t('!orders orders shown match that account with !items items purchased and !total spent:', $targs),
+    '#markup' => t('!orders orders with !items items purchased and !total spent:', $targs),
     '#weight' => -5,
     '#prefix' => '<p>',
     '#suffix' => '</p>',
