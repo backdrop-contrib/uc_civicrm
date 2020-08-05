@@ -1,0 +1,6 @@
+[UcCiviCRMTestCase]
+name = Ubercart-CiviCRM
+description = UcCiviCRMTestCase
+group = Ubercart extras
+file = tests/uc_civicrm.test
+

@@ -3,5 +3,6 @@ description = Integrates Ubercart with CiviCRM.
 package = "Ubercart - extra"
 dependencies[] = "civicrm"
 dependencies[] = "uc_order"
-core = "7.x"
+backdrop = 1.x
+type = module
 configure = admin/store/settings/uc_civicrm

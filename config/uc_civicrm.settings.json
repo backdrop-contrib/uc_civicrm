@@ -1,0 +1,8 @@
+{
+    "_config_name": "uc_civicrm.settings",
+    "uc_civicrm_contribution_type": "1",
+    "uc_civicrm_groups": "",
+    "uc_civicrm_contribution_group_id": "FALSE",
+    "uc_civicrm_sales_tax_field_id": "",
+    "uc_civicrm_shipping_cost_field_id": ""
+}
