@@ -294,7 +294,7 @@ function uc_civicrm_action_update_contact($order) {
   catch (Exception $e) {
     // Silently fail.
     Civi::log()->error("Error recording Ubercart order in uc_civicrm_action_update_contact CiviCRM.\n%message\n%trace",
-      ['%message' $e->getMessage() '%trace' $e->getTraceAsString()]);
+      ['%message' => $e->getMessage(), '%trace' => $e->getTraceAsString()]);
     return;
   }
 }
@@ -324,7 +324,7 @@ function uc_civicrm_action_order_civicrm($order, $is_new = TRUE) {
     return;
   }
   if (UC_CIVICRM_DEBUG) {
-    Civi::log()->info(__FUNCTION__ . " called", ["is_new" $is_new ? "YES" : "NO" $order]);
+    Civi::log()->info(__FUNCTION__ . " called", ["is_new" => $is_new ? "YES" : "NO", $order]);
   }
 
   // Find the contact, or create one.
@@ -336,7 +336,7 @@ function uc_civicrm_action_order_civicrm($order, $is_new = TRUE) {
   catch (Exception $e) {
     // Silently fail.
     Civi::log()->error("Error recording Ubercart order in CiviCRM in uc_civicrm_action_order_civicrm.\n%message\n%trace",
-      ['%message' $e->getMessage() '%trace' $e->getTraceAsString()]);
+      ['%message' => $e->getMessage(), '%trace' => $e->getTraceAsString()]);
     return;
   }
 
@@ -351,10 +351,10 @@ function uc_civicrm_action_order_civicrm($order, $is_new = TRUE) {
   }
 
   try {
-    $params =[
-      'contact_id'             $cid
-      'contribution_status_id' _uc_civicrm_map_contribution_status($order->order_status)
-      'id'                     $contribution['id']
+    $params = [
+      'contact_id'             => $cid,
+      'contribution_status_id' => _uc_civicrm_map_contribution_status($order->order_status),
+      'id'                     => $contribution['id'],
     ];
     $result = civicrm_api3('contribution', 'create', $params);
   }
@@ -380,10 +380,10 @@ function uc_civicrm_action_order_civicrm($order, $is_new = TRUE) {
  */
 function _uc_civicrm_find_contribution_for_order($cid, $order, $return = 'contact_id') {
 
-  $params =[
-    'invoice_id' t('Ubercart #@oid', array('@oid' => $order->order_id))
-    'return'     $return
-    'sequential' 1
+  $params = [
+    'invoice_id' => t('Ubercart #@oid', array('@oid' => $order->order_id)),
+    'return' => $return,
+    'sequential' => 1,
   ];
   $contribution = civicrm_api3('contribution', 'get', $params);
   if ($contribution['count'] == 1) {
@@ -455,16 +455,16 @@ function _uc_civicrm_get_cid($order) {
     // We are logged in, getting a contact record for this Backdrop user failed.
     // This is an unusal state of affairs, and not something we can deal with now.
     watchdog('uc_civicrm', '_uc_civicrm_get_cid() processing order #%orderid error, synchronizeUFMatch failed to return a contact.',
-      ['%orderid' $order->order_id], WATCHDOG_ERROR);
+      ['%orderid' => $order->order_id], WATCHDOG_ERROR);
     throw new Exception("There was an error with your user account.");
   }
 
   // The customer is anonymous.  Look in the CiviCRM contacts table for a
   // contact that matches the primary email.
-  $params =[
-    'email'      $order->primary_email
-    'return'     'contact_id'
-    'sequential' 1
+  $params = [
+    'email' => $order->primary_email,
+    'return' => 'contact_id',
+    'sequential' => 1,
   ];
   $contact = civicrm_api3('contact', 'get', $params);
 
@@ -474,10 +474,10 @@ function _uc_civicrm_get_cid($order) {
   }
 
   // No matches found, so we will need to create a contact with just the email now.
-  $params =[
-    'contact_type' 'Individual'
-    'email'        $order->primary_email
-    'return'       'contact_id'
+  $params = [
+    'contact_type' => 'Individual',
+    'email'        => $order->primary_email,
+    'return'       => 'contact_id',
   ];
   $contact = civicrm_api3('contact', 'create', $params);
 
@@ -504,18 +504,18 @@ function _uc_civicrm_update_contact($cid, $order) {
   // Load contact details.
   try {
     $contact = civicrm_api3('contact', 'getsingle', [
-      'contact_id' (int) $cid
-      'return'[
-        'first_name' 'last_name'
-        'created_date'
-        'source'
+      'contact_id' => (int) $cid,
+      'return' => [
+        'first_name', 'last_name',
+        'created_date',
+        'source',
       ]
     ]);
   }
   catch (CiviCRM_Exception $e) {
     // This should not happen since we only just looked up or created the contact.
     watchdog('uc_civicrm', 'Failed to load contact %cid: %error',
-      ['%cid' $cid '%error' $e->getMessage()], WATCHDOG_ERROR);
+      ['%cid' => $cid, '%error' => $e->getMessage()], WATCHDOG_ERROR);
     return FALSE;
   }
 
@@ -528,8 +528,8 @@ function _uc_civicrm_update_contact($cid, $order) {
   // #2182533. Store's relationship is with the buyer, not the
   // recipient. If Joe buys Sue a gift online, CRM relationship is
   // with Joe, not Sue.
-  $update_params =[
-    'id' $cid
+  $update_params = [
+    'id' => $cid,
   ];
 
   // Set the contact's names if they are not already set.
