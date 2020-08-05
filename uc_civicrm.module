@@ -196,6 +196,7 @@ function uc_civicrm_admin() {
     '#options' => $options,
     '#description' => t('Check to add purchasers to the selected groups'),
   );
+  
   return system_settings_form($form);
 }
 
@@ -1153,14 +1154,13 @@ function _uc_civicrm_customer_orders($uid) {
  *   Locations.
  */
 function _uc_civicrm_get_locations() {
-  $config = config('uc_civicrm.settings');
   $location_types = civicrm_api3('phone', 'getoptions', array('field' => 'location_type_id'));
   $location_types = $location_types['values'];
-
   /**
    * Try a variable and if that fails, scan an array of preferences, return first matching one, or FALSE.
    */
   $get_by_preference = function($var_name, $prefs) use ($location_types) {
+    $config = config('uc_civicrm.settings');
     $_ = $config->get($var_name);
     if ($_) {
       // Found from variable.
