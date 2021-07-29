@@ -17,10 +17,10 @@ function uc_civicrm_civicrm_tabset($tabsetName, &$tabs, $context) {
     if (empty($uid)) {
       return;
     }
-  
+
     $history = uc_civicrm_contact_transaction($uid, FALSE);
     $count = count($history['orders']['#rows']);
-  
+
     if ($count > 0) {
       $tab = array(
         'id' => 'purchases',
@@ -34,7 +34,7 @@ function uc_civicrm_civicrm_tabset($tabsetName, &$tabs, $context) {
 
       $tabs[] = $tab;
     }
-    
+
     return $tabs;
   }
 }
@@ -196,7 +196,7 @@ function uc_civicrm_admin() {
     '#options' => $options,
     '#description' => t('Check to add purchasers to the selected groups'),
   );
-  
+
   return system_settings_form($form);
 }
 
@@ -816,6 +816,7 @@ function _uc_civicrm_map_contribution_status($order_status) {
     "pending" => 2,
     "processing" => 5,
     "canceled" => 3,
+    "abandoned" => 3,
     "in_checkout" => 5,
   );
 
