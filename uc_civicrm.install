@@ -6,19 +6,6 @@
  */
 
 /**
- * Implements hook_uninstall().
- *
- * Removes the module variables
- */
-function uc_civicrm_uninstall() {
-  $results = db_query("SELECT v.name FROM {variable} AS v WHERE v.name LIKE '%uc_civicrm_%'");
-  while ($row = db_fetch_array($results)) {
-    // TODO This variable was probably removed in Backdrop without replacement.
-    variable_del($row['name']);
-  }
-}
-
-/**
  * Implements hook_update_last_removed().
  */
 function uc_civicrm_update_last_removed() {
